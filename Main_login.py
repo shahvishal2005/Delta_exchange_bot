@@ -17,31 +17,32 @@ last_trade_time = 0
 # ==============================
 delta_client = DeltaRestClient(
     base_url='https://cdn-ind.testnet.deltaex.org',
-    api_key=os.getenv("API_KEY"),    #api keys in envr variable
-    api_secret=os.getenv("API_SECRET") # secret keys in envr variable
+    api_key=os.getenv("API_KEY"),
+    api_secret=os.getenv("API_SECRET")
 )
 
 # ==============================
-# GET POSITION
+# GET POSITION (ROBUST VERSION)
 # ==============================
 def get_position():
     try:
-        response = delta_client.get_product_position(PRODUCT_ID)
+        positions = delta_client.get_positions()
 
-        if not response:
-            return None
+        for pos in positions:
+            if pos['product_id'] == PRODUCT_ID:
+                size = float(pos['size'])
 
-        size = float(response.get("size", 0))
+                if size == 0:
+                    return None
 
-        if size == 0:
-            return None
+                side = "buy" if size > 0 else "sell"
 
-        side = "buy" if size > 0 else "sell"
+                return {
+                    "side": side,
+                    "size": size
+                }
 
-        return {
-            "side": side,
-            "size": size
-        }
+        return None
 
     except Exception as e:
         print("❌ Error fetching position:", e)
@@ -53,24 +54,30 @@ def get_position():
 # ==============================
 def place_buy():
     print("🟢 Placing BUY order...")
-    res = delta_client.place_order(
-        product_id=PRODUCT_ID,
-        size=SIZE,
-        side='buy',
-        order_type=OrderType.MARKET
-    )
-    print("✅ BUY response:", res)
+    try:
+        res = delta_client.place_order(
+            product_id=PRODUCT_ID,
+            size=SIZE,
+            side='buy',
+            order_type=OrderType.MARKET
+        )
+        print("✅ BUY response:", res)
+    except Exception as e:
+        print("❌ BUY order failed:", e)
 
 
 def place_sell():
     print("🔴 Placing SELL order...")
-    res = delta_client.place_order(
-        product_id=PRODUCT_ID,
-        size=SIZE,
-        side='sell',
-        order_type=OrderType.MARKET
-    )
-    print("✅ SELL response:", res)
+    try:
+        res = delta_client.place_order(
+            product_id=PRODUCT_ID,
+            size=SIZE,
+            side='sell',
+            order_type=OrderType.MARKET
+        )
+        print("✅ SELL response:", res)
+    except Exception as e:
+        print("❌ SELL order failed:", e)
 
 
 # ==============================
@@ -87,16 +94,20 @@ def close_position(position):
 
     opposite_side = 'sell' if side == 'buy' else 'buy'
 
-    delta_client.place_order(
-        product_id=PRODUCT_ID,
-        size=size,
-        side=opposite_side,
-        order_type=OrderType.MARKET
-    )
+    try:
+        delta_client.place_order(
+            product_id=PRODUCT_ID,
+            size=size,
+            side=opposite_side,
+            order_type=OrderType.MARKET
+        )
+        print("✅ Position closed")
+    except Exception as e:
+        print("❌ Error closing position:", e)
 
 
 # ==============================
-# MAIN SIGNAL HANDLER (CLOSE ONLY)
+# MAIN SIGNAL HANDLER
 # ==============================
 def handle_signal(signal):
     global last_signal, last_trade_time
@@ -130,13 +141,14 @@ def handle_signal(signal):
     if signal == "BUY":
 
         if position is None:
-            # ✅ No position → open BUY
+            # ✅ No position → BUY
             place_buy()
 
         elif position['side'] == 'sell':
-            # ✅ Opposite → CLOSE ONLY
+            # ✅ SELL exists → close + BUY
             close_position(position)
-            print("🚫 No new BUY (close-only mode)")
+            time.sleep(1)
+            place_buy()
 
         else:
             print("✅ Already in BUY, skipping...")
@@ -147,17 +159,20 @@ def handle_signal(signal):
     elif signal == "SELL":
 
         if position is None:
-            # ✅ No position → open SELL
+            # ✅ No position → SELL
             place_sell()
 
         elif position['side'] == 'buy':
-            # ✅ Opposite → CLOSE ONLY
+            # ✅ BUY exists → close + SELL
             close_position(position)
-            print("🚫 No new SELL (close-only mode)")
+            time.sleep(1)
+            place_sell()
 
         else:
             print("✅ Already in SELL, skipping...")
 
-    # Update trackers
+    # ==============================
+    # UPDATE TRACKERS
+    # ==============================
     last_signal = signal
     last_trade_time = current_time
