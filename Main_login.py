@@ -22,27 +22,28 @@ delta_client = DeltaRestClient(
 )
 
 # ==============================
-# GET POSITION (ROBUST VERSION)
+# GET POSITION (FIXED)
 # ==============================
 def get_position():
     try:
-        positions = delta_client.get_positions()
+        res = delta_client.get_position(product_id=PRODUCT_ID)
 
-        for pos in positions:
-            if pos['product_id'] == PRODUCT_ID:
-                size = float(pos['size'])
+        print("📡 Raw position response:", res)
 
-                if size == 0:
-                    return None
+        if not res:
+            return None
 
-                side = "buy" if size > 0 else "sell"
+        size = float(res.get("size", 0))
 
-                return {
-                    "side": side,
-                    "size": size
-                }
+        if size == 0:
+            return None
 
-        return None
+        side = "buy" if size > 0 else "sell"
+
+        return {
+            "side": side,
+            "size": size
+        }
 
     except Exception as e:
         print("❌ Error fetching position:", e)
@@ -62,6 +63,7 @@ def place_buy():
             order_type=OrderType.MARKET
         )
         print("✅ BUY response:", res)
+        time.sleep(2)
     except Exception as e:
         print("❌ BUY order failed:", e)
 
@@ -76,6 +78,7 @@ def place_sell():
             order_type=OrderType.MARKET
         )
         print("✅ SELL response:", res)
+        time.sleep(2)
     except Exception as e:
         print("❌ SELL order failed:", e)
 
@@ -102,6 +105,7 @@ def close_position(position):
             order_type=OrderType.MARKET
         )
         print("✅ Position closed")
+        time.sleep(2)
     except Exception as e:
         print("❌ Error closing position:", e)
 
@@ -118,12 +122,12 @@ def handle_signal(signal):
 
     current_time = time.time()
 
-    # 🔹 Duplicate protection
+    # Duplicate protection
     if signal == last_signal:
         print("⚠️ Duplicate signal ignored")
         return
 
-    # 🔹 Cooldown protection
+    # Cooldown protection
     if current_time - last_trade_time < COOLDOWN_SECONDS:
         print("⏳ Cooldown active, skipping")
         return
@@ -141,13 +145,11 @@ def handle_signal(signal):
     if signal == "BUY":
 
         if position is None:
-            # ✅ No position → BUY
-            place_buy()
+            print("⚠️ No position → skipping BUY (safety)")
+            return
 
         elif position['side'] == 'sell':
-            # ✅ SELL exists → close + BUY
             close_position(position)
-            time.sleep(1)
             place_buy()
 
         else:
@@ -159,13 +161,11 @@ def handle_signal(signal):
     elif signal == "SELL":
 
         if position is None:
-            # ✅ No position → SELL
-            place_sell()
+            print("⚠️ No position → skipping SELL (safety)")
+            return
 
         elif position['side'] == 'buy':
-            # ✅ BUY exists → close + SELL
             close_position(position)
-            time.sleep(1)
             place_sell()
 
         else:
@@ -176,3 +176,6 @@ def handle_signal(signal):
     # ==============================
     last_signal = signal
     last_trade_time = current_time
+
+    print("🧠 Updated last_signal:", last_signal)
+    print("⏱ Updated last_trade_time:", last_trade_time)
