@@ -9,6 +9,7 @@ PRODUCT_ID = 84
 SIZE = 1
 COOLDOWN_SECONDS = 5
 
+# GLOBAL STATE
 last_signal = None
 last_trade_time = 0
 
@@ -22,12 +23,11 @@ delta_client = DeltaRestClient(
 )
 
 # ==============================
-# GET POSITION (FIXED)
+# GET POSITION
 # ==============================
 def get_position():
     try:
         res = delta_client.get_position(product_id=PRODUCT_ID)
-
         print("📡 Raw position response:", res)
 
         if not res:
@@ -145,10 +145,11 @@ def handle_signal(signal):
     if signal == "BUY":
 
         if position is None:
-            print("⚠️ No position → skipping BUY (safety)")
-            return
+            print("🟢 No position → opening BUY")
+            place_buy()
 
         elif position['side'] == 'sell':
+            print("🔄 Reversing SELL → BUY")
             close_position(position)
             place_buy()
 
@@ -161,10 +162,11 @@ def handle_signal(signal):
     elif signal == "SELL":
 
         if position is None:
-            print("⚠️ No position → skipping SELL (safety)")
-            return
+            print("🔴 No position → opening SELL")
+            place_sell()
 
         elif position['side'] == 'buy':
+            print("🔄 Reversing BUY → SELL")
             close_position(position)
             place_sell()
 
